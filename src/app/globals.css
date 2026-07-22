@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * WebHack Academy — Design tokens
+ * Derived from the NextLearn template (colors, type scale, radii).
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Brand palette */
+  --color-ink: #1c1c24; /* headings / primary dark */
+  --color-ink-soft: #2b2b35;
+  --color-body: #4d4d4d; /* body copy */
+  --color-muted: #7a7a7a;
+
+  --color-violet: #855be2; /* primary accent (links, spans) */
+  --color-violet-deep: #5633d1; /* logo / buttons */
+  --color-violet-50: #f3eefe;
+  --color-violet-100: #e7dcfb;
+
+  --color-green: #5dbe74; /* success / free badge */
+  --color-green-soft: #def1e0;
+  --color-orange: #ff6c3c; /* warm accent */
+  --color-pink: #ff7b8e;
+  --color-sky: #5ac0ff;
+  --color-amber: #ffb45a;
+
+  --color-surface: #ffffff;
+  --color-surface-soft: #f7f5ff;
+  --color-surface-mint: #eefaf0;
+  --color-line: #ececf1;
+
+  /* Typography */
+  --font-display: var(--font-kanit), "Kanit", system-ui, sans-serif;
+  --font-sans: var(--font-roboto), "Roboto", system-ui, sans-serif;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 24px 60px -24px rgba(28, 28, 36, 0.18);
+  --shadow-soft: 0 12px 40px -18px rgba(86, 51, 209, 0.28);
+  --shadow-btn: 0 16px 30px -12px rgba(86, 51, 209, 0.5);
+
+  /* Layout */
+  --container-page: 1290px;
+
+  /* Motion */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ------------------------------------------------------------------ *
+ * Dark theme — scoped to the authenticated app shell (.dark wrapper).
+ * The marketing site stays light. Token overrides cascade to every
+ * `text-ink` / `bg-surface` / `border-line` utility inside the subtree.
+ * ------------------------------------------------------------------ */
+.dark {
+  --color-ink: #f4f4f7;
+  --color-ink-soft: #e4e4ec;
+  --color-body: #b6b6c2;
+  --color-muted: #8a8a99;
+
+  --color-surface: #16161d;
+  --color-surface-soft: #1e1e28;
+  --color-surface-mint: #17251b;
+  --color-line: #2b2b38;
+
+  --color-violet-50: #241b3f;
+  --color-violet-100: #2f2352;
+
+  --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
+}
+.dark {
+  background: var(--color-surface);
+  color: var(--color-body);
+}
+
+/* ------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------ */
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-body);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  color: var(--color-ink);
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--color-violet);
+  color: #fff;
+}
+
+/* Utility layer additions */
+@layer utilities {
+  .container-page {
+    width: 100%;
+    max-width: var(--container-page);
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  .text-gradient-violet {
+    background: linear-gradient(90deg, var(--color-violet-deep), var(--color-violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .heading-underline {
+    position: relative;
+    display: inline-block;
+  }
+
+  /* Thin scrollbar for horizontal rails */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* Reduced-motion respect */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Marquee keyframes for the mentors rails */
+@keyframes marquee-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes marquee-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+.marquee-left { animation: marquee-left 38s linear infinite; }
+.marquee-right { animation: marquee-right 38s linear infinite; }
+.marquee-paused:hover .marquee-track { animation-play-state: paused; }

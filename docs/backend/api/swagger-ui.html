@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebHack Academy API — Swagger UI</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #fafafa; }
+      .topbar { display: none; }
+      #hint {
+        font: 14px/1.5 system-ui, sans-serif; color: #4d4d4d;
+        padding: 10px 16px; background: #f3eefe; border-bottom: 1px solid #e7dcfb;
+      }
+      #hint code { background: #fff; padding: 1px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <div id="hint">
+      Local API docs viewer. Serve this folder over HTTP so the browser can fetch the spec —
+      e.g. <code>npx http-server docs/backend/api -p 8088</code> then open
+      <code>http://localhost:8088/swagger-ui.html</code>. (Opening via <code>file://</code>
+      is blocked by CORS.)
+    </div>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" crossorigin></script>
+    <script>
+      window.addEventListener("load", () => {
+        window.ui = SwaggerUIBundle({
+          url: "./openapi.yaml",
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: "StandaloneLayout",
+          persistAuthorization: true,
+          tryItOutEnabled: true,
+        });
+      });
+    </script>
+  </body>
+</html>

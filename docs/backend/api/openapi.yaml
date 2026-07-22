@@ -1,0 +1,1240 @@
+openapi: 3.1.0
+info:
+  title: WebHack Academy API
+  version: 1.0.0
+  description: >
+    REST API contract for the WebHack Academy LMS. This is the source of truth for
+    the frontend client types. Design-stage document — no backend implemented yet.
+    See ../02-api-specification.md for narrative docs.
+  contact:
+    name: WebHack Academy Engineering
+    email: engineering@webhackacademy.com
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.webhackacademy.com/v1
+    description: Production
+  - url: https://staging-api.webhackacademy.com/v1
+    description: Staging
+  - url: http://localhost:4000/v1
+    description: Local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Security
+  - name: Users
+  - name: Catalog
+  - name: Enrollment
+  - name: Learning
+  - name: Quizzes
+  - name: Assignments
+  - name: Certificates
+  - name: Notifications
+  - name: Messaging
+  - name: Calendar
+  - name: Search
+  - name: Analytics
+  - name: Instructor
+  - name: Admin
+  - name: Billing
+  - name: Media
+  - name: System
+
+paths:
+  # ------------------------------------------------------------------ Auth
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Account created; verification email sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate with email + password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated, or MFA challenge required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AuthResult'
+                  - $ref: '#/components/schemas/MfaChallenge'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate tokens using the refresh token (httpOnly cookie or body)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current refresh token family
+      responses:
+        '204': { description: Logged out }
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify email address with a token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties: { token: { type: string } }
+      responses:
+        '204': { description: Verified }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password reset link (always 202, no enumeration)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: { email: { type: string, format: email } }
+      responses:
+        '202': { description: If the account exists, an email was sent }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password using a token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204': { description: Password reset }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password for the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Changed }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/mfa/verify:
+    post:
+      tags: [Auth]
+      summary: Complete login by verifying a TOTP/OTP code
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaVerifyRequest' }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current authenticated user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  # ------------------------------------------------------------------ Security
+  /security/sessions:
+    get:
+      tags: [Security]
+      summary: List active sessions/devices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AuthSessionInfo' }
+    delete:
+      tags: [Security]
+      summary: Revoke all sessions except the current one
+      responses:
+        '204': { description: Revoked }
+  /security/sessions/{id}:
+    delete:
+      tags: [Security]
+      summary: Revoke a specific session
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /security/login-history:
+    get:
+      tags: [Security]
+      summary: Recent login attempts
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedLoginHistory' }
+
+  # ------------------------------------------------------------------ Users
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get my profile
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    patch:
+      tags: [Users]
+      summary: Update my profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /users/me/preferences:
+    get:
+      tags: [Users]
+      summary: Get notification/privacy preferences
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Preferences' } } } }
+    put:
+      tags: [Users]
+      summary: Update preferences
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Preferences' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Preferences' } } } }
+  /users/me/achievements:
+    get:
+      tags: [Users]
+      summary: My achievements
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Achievement' } }
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Public profile
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PublicProfile' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ Catalog
+  /courses:
+    get:
+      tags: [Catalog]
+      summary: List/browse courses
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { $ref: '#/components/parameters/Query' }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: level
+          in: query
+          schema: { $ref: '#/components/schemas/CourseLevel' }
+        - name: sort
+          in: query
+          schema: { type: string, example: '-rating_avg' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedCourseSummary' }
+    post:
+      tags: [Catalog]
+      summary: Create a course (instructor)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CreateCourseRequest' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Course' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /courses/{slug}:
+    get:
+      tags: [Catalog]
+      summary: Course detail with modules & lessons
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Course' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /categories:
+    get:
+      tags: [Catalog]
+      summary: Category tree
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Category' } }
+
+  # ------------------------------------------------------------------ Enrollment & learning
+  /enrollments:
+    get:
+      tags: [Enrollment]
+      summary: My enrollments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EnrollmentWithCourse' } }
+    post:
+      tags: [Enrollment]
+      summary: Enroll in a course
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId]
+              properties: { courseId: { type: string, format: uuid } }
+      responses:
+        '201': { description: Enrolled, content: { application/json: { schema: { $ref: '#/components/schemas/Enrollment' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '402': { description: Payment required for a paid course }
+  /learn/{courseId}:
+    get:
+      tags: [Learning]
+      summary: Player payload (modules, lessons, my progress, signed resources)
+      parameters: [{ name: courseId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlayerPayload' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /learn/{courseId}/lessons/{lessonId}/progress:
+    post:
+      tags: [Learning]
+      summary: Report lesson progress (heartbeat / completion)
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: lessonId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LessonProgressRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProgressResult' } } } }
+
+  # ------------------------------------------------------------------ Quizzes
+  /quizzes/{id}:
+    get:
+      tags: [Quizzes]
+      summary: Get a quiz (questions without correct answers)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/QuizPublic' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /quizzes/{id}/attempts:
+    post:
+      tags: [Quizzes]
+      summary: Start a quiz attempt
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '201': { description: Started, content: { application/json: { schema: { $ref: '#/components/schemas/QuizAttemptStart' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /quizzes/{id}/attempts/{attemptId}/submit:
+    post:
+      tags: [Quizzes]
+      summary: Submit answers and grade
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { name: attemptId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuizSubmitRequest' }
+      responses:
+        '200': { description: Graded, content: { application/json: { schema: { $ref: '#/components/schemas/QuizResult' } } } }
+
+  # ------------------------------------------------------------------ Assignments
+  /assignments:
+    get:
+      tags: [Assignments]
+      summary: My assignments
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/AssignmentStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+  /assignments/{id}/submissions:
+    post:
+      tags: [Assignments]
+      summary: Submit an assignment
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitAssignmentRequest' }
+      responses:
+        '201': { description: Submitted, content: { application/json: { schema: { $ref: '#/components/schemas/Assignment' } } } }
+
+  # ------------------------------------------------------------------ Certificates
+  /certificates:
+    get:
+      tags: [Certificates]
+      summary: My certificates
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Certificate' } }
+  /certificates/verify/{credentialId}:
+    get:
+      tags: [Certificates]
+      summary: Publicly verify a credential
+      security: []
+      parameters: [{ name: credentialId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CredentialVerification' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------------ Notifications & messaging
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Notification feed
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - name: unread
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all as read
+      responses: { '204': { description: Done } }
+  /conversations:
+    get:
+      tags: [Messaging]
+      summary: My conversations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Conversation' } }
+  /conversations/{id}/messages:
+    get:
+      tags: [Messaging]
+      summary: Messages in a conversation
+      parameters: [{ $ref: '#/components/parameters/IdPath' }, { $ref: '#/components/parameters/Cursor' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Message' } }
+    post:
+      tags: [Messaging]
+      summary: Send a message
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendMessageRequest' }
+      responses:
+        '201': { description: Sent, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+
+  # ------------------------------------------------------------------ Search & analytics
+  /search:
+    get:
+      tags: [Search]
+      summary: Unified search
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/Query' }
+        - name: type
+          in: query
+          schema: { type: string, enum: [all, courses, instructors, blog], default: all }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SearchResults' } } } }
+  /analytics/me:
+    get:
+      tags: [Analytics]
+      summary: My learning analytics
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/StudyAnalytics' } } } }
+
+  # ------------------------------------------------------------------ Instructor
+  /instructor/stats:
+    get:
+      tags: [Instructor]
+      summary: Instructor KPIs & charts
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/InstructorStats' } } } }
+  /instructor/submissions/{id}/grade:
+    post:
+      tags: [Instructor]
+      summary: Grade a submission
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GradeSubmissionRequest' }
+      responses:
+        '200': { description: Graded, content: { application/json: { schema: { $ref: '#/components/schemas/Assignment' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ------------------------------------------------------------------ Admin
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Admin dashboard stats
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStats' } } } }
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List users
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { $ref: '#/components/parameters/Query' }
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/Role' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaginatedAdminUser' } } } }
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Audit logs
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaginatedAuditLog' } } } }
+
+  # ------------------------------------------------------------------ Billing
+  /billing/checkout:
+    post:
+      tags: [Billing]
+      summary: Start checkout (course purchase or subscription)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CheckoutResult' } } } }
+  /billing/subscription:
+    get:
+      tags: [Billing]
+      summary: Current subscription
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+  /webhooks/stripe:
+    post:
+      tags: [Billing]
+      summary: Stripe webhook (signature-verified, idempotent)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Acknowledged }
+
+  # ------------------------------------------------------------------ Media
+  /media/uploads:
+    post:
+      tags: [Media]
+      summary: Request a presigned upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUploadRequest' }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CreateUploadResult' } } } }
+  /media/{id}:
+    get:
+      tags: [Media]
+      summary: Get a signed, expiring URL for a media asset
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SignedMedia' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ------------------------------------------------------------------ System
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness probe
+      security: []
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { status: { type: string, example: ok } } } } } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Query:
+      name: q
+      in: query
+      schema: { type: string, maxLength: 120 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+
+  responses:
+    ValidationError:
+      description: Request failed validation
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthenticated:
+      description: Missing or invalid credentials
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Authenticated but not permitted
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: State or uniqueness conflict
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unprocessable:
+      description: Semantically invalid
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  schemas:
+    # --- Common
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+            requestId: { type: string }
+            timestamp: { type: string, format: date-time }
+    Role:
+      type: string
+      enum: [student, instructor, admin]
+    CourseLevel:
+      type: string
+      enum: [beginner, intermediate, advanced]
+    AssignmentStatus:
+      type: string
+      enum: [pending, submitted, graded, overdue]
+    QuestionType:
+      type: string
+      enum: [single, multi, boolean, fill, code]
+    NotificationType:
+      type: string
+      enum: [course, assignment, quiz, message, system, achievement]
+
+    # --- Auth
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        remember: { type: boolean, default: false }
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    ChangePasswordRequest:
+      type: object
+      required: [current, next]
+      properties:
+        current: { type: string }
+        next: { type: string, minLength: 8, maxLength: 128 }
+    MfaVerifyRequest:
+      type: object
+      required: [mfaToken, code]
+      properties:
+        mfaToken: { type: string }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+    MfaChallenge:
+      type: object
+      properties:
+        mfaRequired: { type: boolean, const: true }
+        mfaToken: { type: string }
+    Tokens:
+      type: object
+      required: [accessToken, accessExpiresIn, tokenType]
+      properties:
+        accessToken: { type: string }
+        accessExpiresIn: { type: integer, example: 900 }
+        refreshToken: { type: string, description: Omitted when set as httpOnly cookie }
+        tokenType: { type: string, const: Bearer }
+    AuthResult:
+      type: object
+      required: [user, tokens]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        tokens: { $ref: '#/components/schemas/Tokens' }
+
+    # --- Users
+    User:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        avatar: { type: string, format: uri }
+        role: { $ref: '#/components/schemas/Role' }
+        headline: { type: string }
+        bio: { type: string }
+        location: { type: string }
+        skills: { type: array, items: { type: string } }
+        joinedAt: { type: string, format: date-time }
+        twoFactorEnabled: { type: boolean }
+        emailVerified: { type: boolean }
+    PublicProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        avatar: { type: string, format: uri }
+        headline: { type: string }
+        bio: { type: string }
+        skills: { type: array, items: { type: string } }
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        headline: { type: string, maxLength: 120 }
+        bio: { type: string, maxLength: 1000 }
+        location: { type: string, maxLength: 120 }
+        skills: { type: array, maxItems: 30, items: { type: string, maxLength: 40 } }
+    Preferences:
+      type: object
+      properties:
+        email: { type: object, additionalProperties: { type: boolean } }
+        push: { type: object, additionalProperties: { type: boolean } }
+        inApp: { type: object, additionalProperties: { type: boolean } }
+        profileVisibility: { type: string, enum: [public, students, private] }
+    Achievement:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        unlocked: { type: boolean }
+        unlockedAt: { type: string, format: date-time }
+    AuthSessionInfo:
+      type: object
+      properties:
+        id: { type: string }
+        device: { type: string }
+        browser: { type: string }
+        location: { type: string }
+        ip: { type: string }
+        lastActive: { type: string }
+        current: { type: boolean }
+    LoginHistoryEntry:
+      type: object
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        device: { type: string }
+        location: { type: string }
+        ip: { type: string }
+        status: { type: string, enum: [success, failed] }
+
+    # --- Catalog
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        icon: { type: string }
+        courses: { type: integer }
+    CourseSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        title: { type: string }
+        subtitle: { type: string }
+        category: { type: string }
+        image: { type: string, format: uri }
+        price: { type: string, example: Free }
+        level: { $ref: '#/components/schemas/CourseLevel' }
+        rating: { type: number, format: float }
+        reviews: { type: integer }
+        students: { type: integer }
+        lessons: { type: integer }
+        durationHours: { type: integer }
+        instructorId: { type: string, format: uuid }
+        tags: { type: array, items: { type: string } }
+    Course:
+      allOf:
+        - $ref: '#/components/schemas/CourseSummary'
+        - type: object
+          properties:
+            description: { type: string }
+            outcomes: { type: array, items: { type: string } }
+            requirements: { type: array, items: { type: string } }
+            modules: { type: array, items: { $ref: '#/components/schemas/Module' } }
+    Module:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        lessons: { type: array, items: { $ref: '#/components/schemas/Lesson' } }
+    Lesson:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        type: { type: string, enum: [video, reading, quiz] }
+        duration: { type: integer, description: seconds }
+        preview: { type: boolean }
+    CreateCourseRequest:
+      type: object
+      required: [title, category, level]
+      properties:
+        title: { type: string, minLength: 5, maxLength: 120 }
+        subtitle: { type: string, maxLength: 160 }
+        category: { type: string }
+        level: { $ref: '#/components/schemas/CourseLevel' }
+        priceCents: { type: integer, minimum: 0 }
+
+    # --- Enrollment & learning
+    Enrollment:
+      type: object
+      properties:
+        courseId: { type: string, format: uuid }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        completedLessonIds: { type: array, items: { type: string } }
+        lastLessonId: { type: string }
+        status: { type: string, enum: [not_started, in_progress, completed] }
+        lastAccessedAt: { type: string, format: date-time }
+    EnrollmentWithCourse:
+      allOf:
+        - $ref: '#/components/schemas/Enrollment'
+        - type: object
+          properties:
+            course: { $ref: '#/components/schemas/CourseSummary' }
+    PlayerPayload:
+      type: object
+      properties:
+        course: { $ref: '#/components/schemas/Course' }
+        progress: { $ref: '#/components/schemas/Enrollment' }
+    LessonProgressRequest:
+      type: object
+      properties:
+        watchedSeconds: { type: integer, minimum: 0 }
+        completed: { type: boolean }
+    ProgressResult:
+      type: object
+      properties:
+        progressPct: { type: integer }
+        status: { type: string }
+
+    # --- Quizzes
+    QuizPublic:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        durationMinutes: { type: integer }
+        passingScore: { type: integer }
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              type: { $ref: '#/components/schemas/QuestionType' }
+              prompt: { type: string }
+              options: { type: array, items: { type: string } }
+              points: { type: integer }
+    QuizAttemptStart:
+      type: object
+      properties:
+        attemptId: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    QuizSubmitRequest:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: object
+          additionalProperties:
+            oneOf:
+              - { type: array, items: { type: integer } }
+              - { type: string }
+    QuizResult:
+      type: object
+      properties:
+        attemptId: { type: string }
+        score: { type: integer }
+        passed: { type: boolean }
+        takenAt: { type: string, format: date-time }
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              questionId: { type: string }
+              correct: { type: boolean }
+              pointsAwarded: { type: integer }
+              explanation: { type: string }
+
+    # --- Assignments
+    Assignment:
+      type: object
+      properties:
+        id: { type: string }
+        courseId: { type: string }
+        courseTitle: { type: string }
+        title: { type: string }
+        description: { type: string }
+        dueDate: { type: string, format: date-time }
+        points: { type: integer }
+        status: { $ref: '#/components/schemas/AssignmentStatus' }
+        grade: { type: integer }
+        feedback: { type: string }
+        submittedAt: { type: string, format: date-time }
+        attachments:
+          type: array
+          items:
+            type: object
+            properties: { name: { type: string }, size: { type: string } }
+    SubmitAssignmentRequest:
+      type: object
+      required: [attachments]
+      properties:
+        attachments:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid, description: mediaId }
+        comment: { type: string, maxLength: 1000 }
+    GradeSubmissionRequest:
+      type: object
+      required: [grade]
+      properties:
+        grade: { type: integer, minimum: 0 }
+        feedback: { type: string, maxLength: 2000 }
+
+    # --- Certificates
+    Certificate:
+      type: object
+      properties:
+        id: { type: string }
+        courseId: { type: string }
+        courseTitle: { type: string }
+        category: { type: string }
+        issuedAt: { type: string, format: date-time }
+        credentialId: { type: string }
+        grade: { type: string }
+        pdfUrl: { type: string, format: uri }
+    CredentialVerification:
+      type: object
+      properties:
+        valid: { type: boolean }
+        learnerName: { type: string }
+        courseTitle: { type: string }
+        issuedAt: { type: string, format: date-time }
+        grade: { type: string }
+
+    # --- Notifications & messaging
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        title: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        read: { type: boolean }
+        href: { type: string }
+    Conversation:
+      type: object
+      properties:
+        id: { type: string }
+        participant:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            avatar: { type: string }
+            online: { type: boolean }
+        unread: { type: integer }
+    Message:
+      type: object
+      properties:
+        id: { type: string }
+        senderId: { type: string }
+        text: { type: string }
+        createdAt: { type: string, format: date-time }
+    SendMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 4000 }
+        attachments: { type: array, items: { type: string, format: uuid } }
+
+    # --- Search & analytics
+    SearchResults:
+      type: object
+      properties:
+        courses: { type: array, items: { $ref: '#/components/schemas/CourseSummary' } }
+        instructors: { type: array, items: { $ref: '#/components/schemas/PublicProfile' } }
+        blog:
+          type: array
+          items:
+            type: object
+            properties: { title: { type: string }, excerpt: { type: string }, href: { type: string } }
+    StudyAnalytics:
+      type: object
+      properties:
+        weeklyHours: { type: array, items: { type: object, properties: { day: { type: string }, hours: { type: number } } } }
+        completionRate: { type: integer }
+        totalHours: { type: integer }
+        currentStreak: { type: integer }
+        longestStreak: { type: integer }
+        goalHours: { type: integer }
+        goalProgress: { type: number }
+
+    # --- Instructor & admin
+    Kpi:
+      type: object
+      properties:
+        label: { type: string }
+        value: { type: string }
+        delta: { type: string }
+        trend: { type: string, enum: [up, down] }
+    InstructorStats:
+      type: object
+      properties:
+        kpis: { type: array, items: { $ref: '#/components/schemas/Kpi' } }
+        earnings: { type: array, items: { type: object, properties: { month: { type: string }, amount: { type: number } } } }
+    AdminStats:
+      type: object
+      properties:
+        kpis: { type: array, items: { $ref: '#/components/schemas/Kpi' } }
+        revenue: { type: array, items: { type: object, properties: { month: { type: string }, amount: { type: number } } } }
+    AdminUserRow:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        avatar: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [active, suspended, invited] }
+        courses: { type: integer }
+        joinedAt: { type: string, format: date-time }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string }
+        actor: { type: string }
+        action: { type: string }
+        target: { type: string }
+        ip: { type: string }
+        at: { type: string, format: date-time }
+
+    # --- Billing & media
+    CheckoutRequest:
+      type: object
+      properties:
+        items: { type: array, items: { type: string, format: uuid } }
+        planId: { type: string }
+        couponCode: { type: string }
+    CheckoutResult:
+      type: object
+      properties:
+        checkoutUrl: { type: string, format: uri }
+        clientSecret: { type: string }
+    Subscription:
+      type: object
+      properties:
+        planId: { type: string }
+        status: { type: string, enum: [trialing, active, past_due, canceled] }
+        currentPeriodEnd: { type: string, format: date-time }
+        cancelAtPeriodEnd: { type: boolean }
+    CreateUploadRequest:
+      type: object
+      required: [filename, mime, size, kind]
+      properties:
+        filename: { type: string }
+        mime: { type: string }
+        size: { type: integer, minimum: 1 }
+        kind: { type: string, enum: [video, image, pdf, archive, doc] }
+    CreateUploadResult:
+      type: object
+      properties:
+        mediaId: { type: string, format: uuid }
+        uploadUrl: { type: string, format: uri }
+    SignedMedia:
+      type: object
+      properties:
+        url: { type: string, format: uri }
+        expiresAt: { type: string, format: date-time }
+
+    # --- Paginated envelopes
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+    PaginatedCourseSummary:
+      allOf:
+        - $ref: '#/components/schemas/Pagination'
+        - type: object
+          properties: { items: { type: array, items: { $ref: '#/components/schemas/CourseSummary' } } }
+    PaginatedAdminUser:
+      allOf:
+        - $ref: '#/components/schemas/Pagination'
+        - type: object
+          properties: { items: { type: array, items: { $ref: '#/components/schemas/AdminUserRow' } } }
+    PaginatedAuditLog:
+      allOf:
+        - $ref: '#/components/schemas/Pagination'
+        - type: object
+          properties: { items: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } }
+    PaginatedLoginHistory:
+      allOf:
+        - $ref: '#/components/schemas/Pagination'
+        - type: object
+          properties: { items: { type: array, items: { $ref: '#/components/schemas/LoginHistoryEntry' } } }
