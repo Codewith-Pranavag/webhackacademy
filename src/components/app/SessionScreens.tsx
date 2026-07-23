@@ -1,9 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Clock, ShieldAlert, Lock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { useAuth } from "@/store/auth";
 
 function Screen({
   icon,
@@ -34,23 +32,12 @@ function Screen({
 }
 
 export function SessionExpired() {
-  const router = useRouter();
-  const login = useAuth((s) => s.login);
   return (
     <Screen
       icon={<Clock className="h-9 w-9" />}
       title="Your session has expired"
       description="For your security, you've been signed out due to inactivity. Please sign in again to continue."
-      primary={
-        <Button
-          onClick={async () => {
-            await login({ email: "rahul.kaushik@acme.in", password: "demo1234" });
-            router.refresh();
-          }}
-        >
-          Sign in again
-        </Button>
-      }
+      primary={<Button href="/login">Sign in again</Button>}
       secondary={
         <Button variant="outline" href="/">
           Back to home

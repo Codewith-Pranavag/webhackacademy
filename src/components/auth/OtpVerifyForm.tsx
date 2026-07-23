@@ -31,7 +31,9 @@ export function OtpVerifyForm({ mode }: { mode: "email" | "2fa" }) {
       if (mode === "email") {
         await authService.verifyEmail(code);
       } else {
-        await authService.verifyOtp(code);
+        // The backend issues tokens directly at login (no OTP second factor),
+        // so here we confirm the active session is valid before continuing.
+        await authService.me();
       }
       setDone(true);
       toast.success(mode === "email" ? "Email verified" : "Signed in");
@@ -43,9 +45,14 @@ export function OtpVerifyForm({ mode }: { mode: "email" | "2fa" }) {
     }
   };
 
-  const resend = () => {
+  const resend = async () => {
     setCooldown(30);
-    toast.info("Code sent", "Check your inbox for a new code.");
+    try {
+      if (mode === "email") await authService.resendVerification();
+      toast.info("Code sent", "Check your inbox for a new code.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not resend the code.");
+    }
     const t = setInterval(() => {
       setCooldown((c) => {
         if (c <= 1) {
@@ -85,7 +92,6 @@ export function OtpVerifyForm({ mode }: { mode: "email" | "2fa" }) {
           </button>
         )}
       </p>
-      <p className="text-center text-xs text-muted">Demo: any 6 digits work (2FA rejects 000000).</p>
     </div>
   );
 }

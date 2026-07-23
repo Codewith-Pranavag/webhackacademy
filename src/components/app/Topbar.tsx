@@ -13,8 +13,6 @@ import {
   LogOut,
   User as UserIcon,
   Settings as SettingsIcon,
-  Repeat,
-  Check,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { useUI } from "@/store/ui";
@@ -22,7 +20,6 @@ import { useAuth } from "@/store/auth";
 import { useNotifications } from "@/store/notifications";
 import { toast } from "@/store/toast";
 import { timeAgo } from "@/lib/format";
-import type { Role } from "@/types";
 import { cn } from "@/lib/utils";
 
 function useOutside(onClose: () => void) {
@@ -40,7 +37,7 @@ function useOutside(onClose: () => void) {
 export function Topbar() {
   const router = useRouter();
   const { setMobileSidebar, theme, toggleTheme } = useUI();
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
   const { items, markAllRead } = useNotifications();
   const unread = items.filter((n) => !n.read);
 
@@ -60,13 +57,6 @@ export function Topbar() {
     await logout();
     toast.success("Signed out", "You have been logged out.");
     router.push("/login");
-  };
-
-  const changeRole = (role: Role) => {
-    switchRole(role);
-    setMenuOpen(false);
-    toast.info(`Viewing as ${role}`, "Demo role switch — navigation updated.");
-    router.push(role === "student" ? "/app/dashboard" : role === "instructor" ? "/app/instructor" : "/app/admin");
   };
 
   return (
@@ -178,23 +168,6 @@ export function Topbar() {
               <MenuLink href="/app/settings" icon={<SettingsIcon className="h-4 w-4" />} onClick={() => setMenuOpen(false)}>
                 Settings
               </MenuLink>
-
-              <div className="my-1.5 border-t border-line" />
-              <p className="px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wider text-muted">
-                <span className="inline-flex items-center gap-1">
-                  <Repeat className="h-3 w-3" /> Switch view (demo)
-                </span>
-              </p>
-              {(["student", "instructor", "admin"] as Role[]).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => changeRole(r)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm capitalize text-body transition-colors hover:bg-violet-50 hover:text-violet-deep"
-                >
-                  {r}
-                  {user?.role === r && <Check className="h-4 w-4 text-violet-deep" />}
-                </button>
-              ))}
 
               <div className="my-1.5 border-t border-line" />
               <button

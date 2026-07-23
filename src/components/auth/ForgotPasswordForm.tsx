@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { MailCheck } from "lucide-react";
 import { AuthField, authInputClass } from "./AuthField";
+import { authService } from "@/services/auth.service";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -26,7 +27,7 @@ export function ForgotPasswordForm() {
         <MailCheck className="h-10 w-10 text-green" />
         <p className="font-semibold text-ink">Check your inbox</p>
         <p className="text-sm text-body">
-          If an account exists, we&apos;ve sent a reset link. (Front-end demo.)
+          If an account exists for that address, we&apos;ve sent a reset link.
         </p>
       </div>
     );
@@ -34,8 +35,9 @@ export function ForgotPasswordForm() {
 
   return (
     <form
-      onSubmit={handleSubmit(async () => {
-        await new Promise((r) => setTimeout(r, 500));
+      onSubmit={handleSubmit(async ({ email }) => {
+        // Backend always responds 202 — never reveals whether the account exists.
+        await authService.requestPasswordReset(email);
         setDone(true);
       })}
       className="flex flex-col gap-5"

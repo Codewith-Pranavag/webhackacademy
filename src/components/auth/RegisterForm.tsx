@@ -1,17 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CheckCircle2 } from "lucide-react";
 import { AuthField, PasswordInput, authInputClass } from "./AuthField";
+import { useAuth } from "@/store/auth";
 
 const schema = z
   .object({
     name: z.string().min(2, "Please enter your name"),
     email: z.string().email("Enter a valid email address"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(
+        /^(?=.*[A-Za-z])(?=.*\d)/,
+        "Include at least one letter and one number",
+      ),
     confirm: z.string(),
     terms: z.literal(true, {
       errorMap: () => ({ message: "You must accept the terms to continue" }),
@@ -25,34 +32,39 @@ const schema = z
 type Values = z.infer<typeof schema>;
 
 export function RegisterForm() {
-  const [done, setDone] = useState(false);
+  const router = useRouter();
+  const registerUser = useAuth((s) => s.register);
+  const [formError, setFormError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
-  if (done) {
-    return (
-      <div className="flex flex-col items-center gap-3 rounded-[var(--radius-lg)] bg-green-soft p-8 text-center">
-        <CheckCircle2 className="h-10 w-10 text-green" />
-        <p className="font-semibold text-ink">Account created</p>
-        <p className="text-sm text-body">
-          This is a front-end demo — connect your backend to complete registration.
-        </p>
-      </div>
-    );
-  }
+  const onSubmit = async (values: Values) => {
+    setFormError(null);
+    try {
+      await registerUser({
+        name: values.name,
+        email: values.email,
+        password: values.password,
+      });
+      router.push("/app/dashboard");
+    } catch (e) {
+      setFormError(
+        e instanceof Error ? e.message : "Could not create your account.",
+      );
+    }
+  };
 
   return (
-    <form
-      onSubmit={handleSubmit(async () => {
-        await new Promise((r) => setTimeout(r, 500));
-        setDone(true);
-      })}
-      className="flex flex-col gap-5"
-      noValidate
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
+      {formError && (
+        <p className="rounded-[var(--radius)] bg-orange/10 px-4 py-3 text-sm font-medium text-orange">
+          {formError}
+        </p>
+      )}
+
       <AuthField id="name" label="Full name" error={errors.name?.message}>
         <input id="name" placeholder="Jane Doe" className={authInputClass} {...register("name")} />
       </AuthField>

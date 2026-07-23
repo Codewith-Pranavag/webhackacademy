@@ -2,52 +2,65 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { authService, type LoginInput } from "@/services/auth.service";
-import { currentUser } from "@/mocks/db";
-import type { AuthSession, Role, User } from "@/types";
+import {
+  authService,
+  type LoginInput,
+  type RegisterInput,
+} from "@/services/auth.service";
+import { clearTokens, hasTokens } from "@/lib/api/tokens";
+import type { Role, User } from "@/types";
 
 type Status = "authenticated" | "unauthenticated" | "expired";
 
 interface AuthState {
-  session: AuthSession | null;
   status: Status;
   user: User | null;
+  /** True once the initial token validation has completed. */
+  hydrated: boolean;
   login: (input: LoginInput) => Promise<void>;
-  register: (input: { name: string; email: string }) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  /** Validate any persisted tokens against the backend on app load. */
+  hydrate: () => Promise<void>;
   expireSession: () => void;
   hasRole: (roles: Role | Role[]) => boolean;
-  /** Demo helper: switch the active role to preview instructor/admin areas. */
-  switchRole: (role: Role) => void;
 }
-
-// Seed an authenticated demo session so the app is immediately explorable.
-const seedSession: AuthSession = {
-  user: currentUser,
-  token: "mock.jwt.seed",
-  expiresAt: Date.now() + 1000 * 60 * 60,
-};
 
 export const useAuth = create<AuthState>()(
   persist(
     (set, get) => ({
-      session: seedSession,
-      status: "authenticated",
-      user: currentUser,
+      status: "unauthenticated",
+      user: null,
+      hydrated: false,
 
       async login(input) {
         const session = await authService.login(input);
-        set({ session, user: session.user, status: "authenticated" });
+        set({ user: session.user, status: "authenticated", hydrated: true });
       },
 
       async register(input) {
         const session = await authService.register(input);
-        set({ session, user: session.user, status: "authenticated" });
+        set({ user: session.user, status: "authenticated", hydrated: true });
       },
 
       async logout() {
         await authService.logout();
-        set({ session: null, user: null, status: "unauthenticated" });
+        set({ user: null, status: "unauthenticated" });
+      },
+
+      async hydrate() {
+        // No stored tokens → definitely signed out.
+        if (!hasTokens()) {
+          set({ user: null, status: "unauthenticated", hydrated: true });
+          return;
+        }
+        try {
+          const user = await authService.me();
+          set({ user, status: "authenticated", hydrated: true });
+        } catch {
+          clearTokens();
+          set({ user: null, status: "unauthenticated", hydrated: true });
+        }
       },
 
       expireSession() {
@@ -59,16 +72,13 @@ export const useAuth = create<AuthState>()(
         if (!role) return false;
         return Array.isArray(roles) ? roles.includes(role) : roles === role;
       },
-
-      switchRole(role) {
-        const user = get().user;
-        if (user) set({ user: { ...user, role } });
-      },
     }),
     {
       name: "wha-auth",
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ session: s.session, user: s.user, status: s.status }),
+      // Persist only the user for an instant first paint; the source of truth
+      // is the token store, re-validated via hydrate() on load.
+      partialize: (s) => ({ user: s.user, status: s.status }),
     },
   ),
 );

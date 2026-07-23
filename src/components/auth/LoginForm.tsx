@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CheckCircle2 } from "lucide-react";
 import { AuthField, PasswordInput, authInputClass } from "./AuthField";
+import { useAuth } from "@/store/auth";
+import { ApiError } from "@/lib/api/client";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -17,34 +19,39 @@ const schema = z.object({
 type Values = z.infer<typeof schema>;
 
 export function LoginForm() {
-  const [done, setDone] = useState(false);
+  const router = useRouter();
+  const login = useAuth((s) => s.login);
+  const [formError, setFormError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
-  if (done) {
-    return (
-      <div className="flex flex-col items-center gap-3 rounded-[var(--radius-lg)] bg-green-soft p-8 text-center">
-        <CheckCircle2 className="h-10 w-10 text-green" />
-        <p className="font-semibold text-ink">Signed in successfully</p>
-        <p className="text-sm text-body">
-          This is a front-end demo — connect your backend to complete authentication.
-        </p>
-      </div>
-    );
-  }
+  const onSubmit = async (values: Values) => {
+    setFormError(null);
+    try {
+      await login(values);
+      router.push("/app/dashboard");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 423) {
+        router.push("/account-locked");
+        return;
+      }
+      setFormError(
+        e instanceof Error ? e.message : "Could not sign in. Please try again.",
+      );
+    }
+  };
 
   return (
-    <form
-      onSubmit={handleSubmit(async () => {
-        await new Promise((r) => setTimeout(r, 500));
-        setDone(true);
-      })}
-      className="flex flex-col gap-5"
-      noValidate
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
+      {formError && (
+        <p className="rounded-[var(--radius)] bg-orange/10 px-4 py-3 text-sm font-medium text-orange">
+          {formError}
+        </p>
+      )}
+
       <AuthField id="email" label="Email address" error={errors.email?.message}>
         <input
           id="email"

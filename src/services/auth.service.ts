@@ -1,14 +1,65 @@
-import { mockRequest, mockError } from "@/lib/mock/client";
-import { currentUser } from "@/mocks/db";
-import type { AuthSession, User } from "@/types";
+/* ------------------------------------------------------------------ *
+ * Auth service — real calls to the WebHack Academy backend (/v1/auth).
+ *
+ * JWT access + rotating refresh tokens are persisted by the API client's
+ * token store; this module maps the backend's PublicUser onto the app's
+ * User type and exposes the auth operations the UI depends on.
+ * ------------------------------------------------------------------ */
 
-const SESSION_TTL = 1000 * 60 * 60; // 1 hour
+import { api } from "@/lib/api/client";
+import { setTokens, clearTokens, getRefreshToken } from "@/lib/api/tokens";
+import type { AuthSession, Role, User } from "@/types";
 
-function makeSession(user: User): AuthSession {
+/** Shape returned by the backend for a user (auth.service.ts::PublicUser). */
+interface BackendUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  role: string;
+  roles: string[];
+  emailVerified: boolean;
+  headline?: string;
+  joinedAt: string;
+}
+
+interface BackendTokens {
+  accessToken: string;
+  accessExpiresIn: number;
+  refreshToken: string;
+  tokenType: "Bearer";
+}
+
+interface AuthResult {
+  user: BackendUser;
+  tokens: BackendTokens;
+  devVerificationToken?: string;
+}
+
+const VALID_ROLES: Role[] = ["student", "instructor", "admin"];
+
+function toUser(u: BackendUser): User {
+  const role = (VALID_ROLES as string[]).includes(u.role)
+    ? (u.role as Role)
+    : "student";
   return {
-    user,
-    token: `mock.jwt.${user.id}.${Math.floor(Math.random() * 1e9)}`,
-    expiresAt: Date.now() + SESSION_TTL,
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatar ?? "",
+    role,
+    headline: u.headline,
+    joinedAt: u.joinedAt,
+    emailVerified: u.emailVerified,
+  };
+}
+
+function toSession(result: AuthResult): AuthSession {
+  setTokens(result.tokens);
+  return {
+    user: toUser(result.user),
+    token: result.tokens.accessToken,
+    expiresAt: Date.now() + result.tokens.accessExpiresIn * 1000,
   };
 }
 
@@ -18,58 +69,73 @@ export interface LoginInput {
   remember?: boolean;
 }
 
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
 export const authService = {
-  /** Simulated login. Use password "locked" to see the account-locked flow. */
-  async login({ email, password }: LoginInput): Promise<AuthSession> {
-    if (password === "locked") {
-      return mockError(423, "Your account has been locked after too many attempts.");
-    }
-    if (password === "wrong") {
-      return mockError(401, "Incorrect email or password.");
-    }
-    return mockRequest(() => makeSession({ ...currentUser, email }));
+  async login({ email, password, remember }: LoginInput): Promise<AuthSession> {
+    const result = await api.post<AuthResult>(
+      "/auth/login",
+      { email, password, remember: Boolean(remember) },
+      { auth: false },
+    );
+    return toSession(result);
   },
 
-  async register(input: { name: string; email: string }): Promise<AuthSession> {
-    return mockRequest(() =>
-      makeSession({
-        ...currentUser,
-        name: input.name,
-        email: input.email,
-        emailVerified: false,
-      }),
+  async register(input: RegisterInput): Promise<AuthSession> {
+    const result = await api.post<AuthResult>("/auth/register", input, {
+      auth: false,
+    });
+    return toSession(result);
+  },
+
+  async requestPasswordReset(email: string): Promise<{ status: string }> {
+    return api.post<{ status: string }>(
+      "/auth/forgot-password",
+      { email },
+      { auth: false },
     );
   },
 
-  async requestPasswordReset(email: string): Promise<{ email: string }> {
-    return mockRequest({ email });
+  async resetPassword(token: string, password: string): Promise<void> {
+    await api.post<void>(
+      "/auth/reset-password",
+      { token, password },
+      { auth: false },
+    );
   },
 
-  async resetPassword(): Promise<{ ok: true }> {
-    return mockRequest({ ok: true });
+  async verifyEmail(token: string): Promise<{ ok: boolean }> {
+    return api.post<{ ok: boolean }>(
+      "/auth/verify-email",
+      { token },
+      { auth: false },
+    );
   },
 
-  async verifyEmail(code: string): Promise<{ ok: boolean }> {
-    if (code.length !== 6) return mockError(400, "Invalid verification code.");
-    return mockRequest({ ok: true });
+  async resendVerification(): Promise<{ ok: boolean }> {
+    return api.post<{ ok: boolean }>("/auth/resend-verification");
   },
 
-  async verifyOtp(code: string): Promise<AuthSession> {
-    if (code !== "000000" && code.length === 6) {
-      return mockRequest(() => makeSession(currentUser));
-    }
-    return mockError(401, "Invalid or expired code.");
-  },
-
-  async changePassword(): Promise<{ ok: true }> {
-    return mockRequest({ ok: true });
+  async changePassword(current: string, next: string): Promise<void> {
+    await api.post<void>("/auth/change-password", { current, next });
   },
 
   async me(): Promise<User> {
-    return mockRequest(currentUser);
+    const user = await api.get<BackendUser>("/auth/me");
+    return toUser(user);
   },
 
-  async logout(): Promise<{ ok: true }> {
-    return mockRequest({ ok: true }, { delay: 150 });
+  async logout(): Promise<void> {
+    const refreshToken = getRefreshToken() ?? undefined;
+    try {
+      await api.post<void>("/auth/logout", { refreshToken });
+    } finally {
+      // Always clear client state even if the network call fails.
+      clearTokens();
+    }
   },
 };

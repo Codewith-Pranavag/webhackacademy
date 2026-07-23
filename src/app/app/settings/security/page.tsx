@@ -44,10 +44,17 @@ export default function SecurityPage() {
     useForm<PwValues>({ resolver: zodResolver(pwSchema) });
   const nextPw = watch("next") ?? "";
 
-  const submitPassword = async () => {
-    await authService.changePassword();
-    reset();
-    toast.success("Password changed", "Use your new password next time you sign in.");
+  const submitPassword = async (values: PwValues) => {
+    try {
+      await authService.changePassword(values.current, values.next);
+      reset();
+      toast.success("Password changed", "Use your new password next time you sign in.");
+    } catch (e) {
+      toast.error(
+        "Could not change password",
+        e instanceof Error ? e.message : "Please try again.",
+      );
+    }
   };
 
   const enable2FA = () => {
