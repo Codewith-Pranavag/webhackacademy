@@ -78,7 +78,7 @@ async function refreshTokens(): Promise<boolean> {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        
         body: JSON.stringify({ refreshToken }),
       });
       if (!res.ok) {
@@ -121,7 +121,7 @@ export async function apiRequest<T>(
     res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      credentials: "include",
+      
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
